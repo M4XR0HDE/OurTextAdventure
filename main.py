@@ -10,7 +10,6 @@ class Player:#create on player object
         self.base_attack = 5
         self.attack_power = self.base_attack
         self.equipped_weapon = None
-        # Start with stick equipped
         self.inventory.append(stick)
         self.equip_weapon("Stick")
 
@@ -89,6 +88,8 @@ class Ally:
         self.base_attack = base_attack
         self.location = location
         self.type = type
+    def is_alive(self):
+        return self.health > 0
 
     def show_info(self):
         print(f"Ally: {self.name}")
@@ -135,6 +136,9 @@ def turn_ally(enemy, location):
     ally_name = input(f"What do you want to name your {enemy.name}: ")
     new_ally = Ally(name=ally_name, health=enemy.health, base_attack=enemy.attack_power, location=location, type=enemy.name)
     allies.append(new_ally)
+    # Remove enemy from enemies list
+    if enemy in enemies:
+        enemies.remove(enemy)
     print(f"{ally_name} is now your ally!")
 
 def heal_player(player, amount):#a basic healing function can be used for potions or other things
@@ -143,10 +147,11 @@ def heal_player(player, amount):#a basic healing function can be used for potion
         print(f"{player.name}'s Health increased by {amount}. Current Health: {player.health}")
     else:
         print(f"You feel rejuvenated! Health increased by {amount}. Current health: {player.health}")
+
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
     print("\033c", end="")  # ANSI escape code for extra clearing
-    
+
 #creating starter items
 stick = Item(
     name="Stick",
@@ -177,6 +182,7 @@ big_healing_flask = Item(
 
 #creating Random Items
 Bone = Item(name="Bone", description="A bone from a defeated skeleton.", usage="Maybe it's useful.", value=5)
+
 class Map:#object for map
     def __init__(self):#create rooms and connection to other rooms
         self.rooms = {
@@ -202,14 +208,15 @@ class Map:#object for map
     def get_room(self, room_name):
         return self.rooms.get(room_name)
 
-
 # Initializing game elements
 game_map = Map()
+
 #creating enemies
 Goblin_starter = Enemy("Goblin", health=50, attack_power=5)
 Ogre_starter_boss = Enemy("Ogre", health=100, attack_power=20)
 Skeleton1_starter = Enemy("Skeleton1", health=30, attack_power=10, has_defeat_interaction="Bone", defeat_interaction_effect=lambda enemy: (heal_player(enemy, 5), turn_ally(enemy, enemy.location)))
 Skeleton2_starter = Enemy("Skeleton2", health=10, attack_power=20, has_defeat_interaction="Bone", defeat_interaction_effect=lambda enemy: (heal_player(enemy, 5), turn_ally(enemy, enemy.location)))
+
 #placing enemies into rooms
 Goblin_starter.location = "Starting Room"
 Skeleton1_starter.location = "Armory"
@@ -221,7 +228,7 @@ enemies = [
     Ogre_starter_boss,
     Skeleton2_starter,
     Skeleton1_starter
-]
+]#enemy list for coding logic
 
 # Add a list to hold allies
 allies = []
@@ -241,6 +248,7 @@ while 1:
 player = Player(player_name)
 clear_screen()
 #main loop
+
 while 1:
     if player.health <= 0:
         print(f"{player.name} has been defeated.")
@@ -273,7 +281,7 @@ while 1:
     # Loot defeated enemies
     defeated_enemies = [enemy for enemy in room_enemies if enemy.health <= 0 and not getattr(enemy, 'looted', False)]
     if defeated_enemies:
-        loot_action = input("Would you like to loot a defeated enemy? (yes/no): ").strip().lower()
+        loot_action = input("Would you like to loot a defeated enemy? (yes/no): ")
         if loot_action == "yes":
             print("Defeated enemies:")
             for enemy in defeated_enemies:
@@ -298,7 +306,10 @@ while 1:
                 player.location = new_room
                 # Move all allies with the player
                 for ally in allies:
-                    ally.location = new_room
+                    if ally.health <= 0:
+                        continue
+                    else:
+                        ally.location = new_room
                 print(f"You move {direction} to the {new_room}.")
             else:
                 print("You can't go that way.")
@@ -317,11 +328,15 @@ while 1:
                     room_allies = [ally for ally in allies if hasattr(ally, 'location') and ally.location == player.location]
                     if room_allies:
                         ally = room_allies[0]
-                        damage = target.attack_power
-                        ally.health -= damage
-                        print(f"{ally.name} takes {damage} damage instead of you! Ally health: {ally.health}")
-                        if ally.health <= 0:
-                            print(f"{ally.name} has been defeated!")
+                        if ally.is_alive():
+                            damage = target.attack_power
+                            ally.health -= damage
+                            print(f"{ally.name} takes {damage} damage instead of you! Ally health: {ally.health}")
+                            if ally.health <= 0:
+                                print(f"{ally.name} has been defeated!")
+                        else:
+                            print("No Allies to tank the Damage.")
+                            target.attack(player)
                     else:
                         target.attack(player)
                 else:
@@ -351,6 +366,7 @@ while 1:
                     found_ally = next((ally for ally in allies if ally.name == ally_name), None)
                     if found_ally:
                         found_ally.show_info()
+                        print(f"Location: {found_ally.location}")
                     else:
                         print("Ally not found.")
                 else:
@@ -379,7 +395,7 @@ while 1:
                             print("You can't throw away an equipped item. Please unequip it first.")
                         else:
                             print("Do you want to place it in the room or throw it at an enemy?")
-                            throw_choice = input("Type 'room' to place in room, 'enemy' to throw at enemy: ").strip().lower()
+                            throw_choice = input("Type 'room' to place in room, 'enemy' to throw at enemy: ")
                             if throw_choice == "room":
                                 player.remove_item(found_item)
                                 room = game_map.get_room(player.location)
@@ -406,9 +422,10 @@ while 1:
                                             # Defeat interaction: if enemy has one, call effect if item matches
                                             if hasattr(target, 'has_defeat_interaction') and hasattr(target, 'defeat_interaction_effect'):
                                                 if isinstance(found_item, Item) and found_item.name == target.has_defeat_interaction:
-                                                    target.defeat_interaction_effect(target)
                                                     print(f"You throw {item_name} at {target.name}. You lost the item!")
                                                     print(f"Secret interaction triggered for {target.name}!")
+                                                    target.defeat_interaction_effect(target)
+                                                    
                                                     continue  # Skip the rest of the throwing logic
                                         print(f"You throw {item_name} at {target.name}. You lost the item!")
                                         player.remove_item(found_item)
@@ -478,7 +495,7 @@ while 1:
             print("You see nothing special.")
         # After look, if items are present, offer collect
         if show_collect:
-            collect_action = input("Would you like to collect an item? (yes/no): ").strip().lower()
+            collect_action = input("Would you like to collect an item? (yes/no): ")
             if collect_action == "yes":
                 print("Items available to collect:")
                 for item in room["items"]:
