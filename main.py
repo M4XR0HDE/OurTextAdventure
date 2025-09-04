@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import re
 
 class Player:#create on player object
     def __init__(self, name):#declaring player attributes
@@ -134,7 +135,8 @@ class Item:#object for item
 #Functions
 def turn_ally(enemy, location):
     ally_name = input(f"What do you want to name your {enemy.name}: ")
-    new_ally = Ally(name=ally_name, health=enemy.health, base_attack=enemy.attack_power, location=location, type=enemy.name)
+    type_name = re.sub(r'\d+', '', enemy.name)
+    new_ally = Ally(name=ally_name, health=enemy.health, base_attack=enemy.attack_power, location=location, type=type_name)
     allies.append(new_ally)
     # Remove enemy from enemies list
     if enemy in enemies:
@@ -145,6 +147,8 @@ def heal_player(player, amount):#a basic healing function can be used for potion
     player.health += amount
     if isinstance(player, Enemy):
         print(f"{player.name}'s Health increased by {amount}. Current Health: {player.health}")
+    elif isinstance(player, Ally):
+        print(f"{player.name} feels rejuvenated! Health increased by {amount}. Current health: {player.health}")
     else:
         print(f"You feel rejuvenated! Health increased by {amount}. Current health: {player.health}")
 
@@ -353,7 +357,7 @@ while 1:
     elif action == "inventory":
         clear_screen()
         while True:
-            print(f"Current Health: {player.health}")
+            print(f"Current Player Health: {player.health}")
             player.show_inventory()
             inv_action = input("Inventory options: use, throw, info, equip, unequip, allyinfo, back > ")
             clear_screen()
@@ -373,8 +377,45 @@ while 1:
                     print("You have no allies.")
                 continue
             if inv_action == "use":
+                # Show all usable (non-weapon) items
+                usable_items = [item for item in player.inventory if isinstance(item, Item) and not item.is_weapon]
+                if usable_items:
+                    print("Usable items:")
+                    for item in usable_items:
+                        print(f" - {item.name}")
+                else:
+                    print("No usable items in inventory.")
                 item_name = input("Enter the name of the item to use: ")
-                player.use_item(item_name)
+                found_item = None
+                for item in usable_items:
+                    if item.name == item_name:
+                        found_item = item
+                        break
+                if found_item:
+                    # Show list of allies before target prompt
+                    if allies:
+                        print("Allies:")
+                        for ally in allies:
+                            print(f" - {ally.name}")
+                    use_target = input("Use on: 'player' or enter ally name > ").strip()
+                    if use_target.lower() == "player":
+                        target = player
+                    else:
+                        target = next((ally for ally in allies if ally.name == use_target), None)
+                        if not target:
+                            print("Ally not found. Try again.")
+                            continue
+                    if isinstance(found_item, Item) and found_item.effect:
+                        try:
+                            found_item.effect(target)
+                            player.remove_item(found_item)
+                        except Exception:
+                            print("Item effect could not be applied.")
+                    else:
+                        print("Item cannot be used.")
+                else:
+                    print("Item not found in inventory.")
+
             elif inv_action == "throw":
                 if player.inventory:
                     print("Your inventory:")
@@ -425,7 +466,7 @@ while 1:
                                                     print(f"You throw {item_name} at {target.name}. You lost the item!")
                                                     print(f"Secret interaction triggered for {target.name}!")
                                                     target.defeat_interaction_effect(target)
-                                                    
+                                                    player.remove_item(found_item)
                                                     continue  # Skip the rest of the throwing logic
                                         print(f"You throw {item_name} at {target.name}. You lost the item!")
                                         player.remove_item(found_item)
@@ -451,6 +492,7 @@ while 1:
                         print("Item not found in inventory.")
                 else:
                     print("Your inventory is empty.")
+
             elif inv_action == "info":
                 item_name = input("Enter the name of the item to view info: ")
                 found_item = None
@@ -463,6 +505,7 @@ while 1:
                     found_item.show_info()
                 else:
                     print("Item not found or has no info.")
+
             elif inv_action == "equip":
                 # Print all weapons in inventory before asking for input
                 weapons = [item for item in player.inventory if isinstance(item, Item) and item.is_weapon]
@@ -471,11 +514,14 @@ while 1:
                     print(f" - {weapon.name} (Attack: {weapon.value})")
                 item_name = input("Enter the name of the weapon to equip: ")
                 player.equip_weapon(item_name)
+
             elif inv_action == "unequip":
                 player.unequip_weapon()
+
                 print("Weapon unequipped.")
             elif inv_action == "back":
                 break
+
             else:
                 print("Invalid inventory option.")
 
